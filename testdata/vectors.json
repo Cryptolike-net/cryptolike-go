@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "generated_by": "the CryptoLike platform's own request and webhook signers (never typed by hand)",
+  "notes": [
+    "Bodies are given as JSON strings: sign/verify the exact UTF-8 bytes of the decoded string, without re-serialising.",
+    "Webhook: X-Signature = \"sha256=\" + hex(HMAC-SHA256(secret, X-Timestamp + \".\" + raw_body)); compare in constant time; reject timestamps older than a few minutes (https://cryptolike.net/docs/webhooks §3).",
+    "API request: X-Signature = hex(HMAC-SHA256(secret, timestamp \\n METHOD \\n path[?query] \\n hex(sha256(body)))); the secret is used as the string shown in the cabinet, not decoded (https://cryptolike.net/docs/auth §3).",
+    "Request signing belongs on the integrator's SERVER: the API secret must never be shipped to a browser or a mobile app (https://cryptolike.net/docs/widget §1).",
+    "Negative webhook vectors (valid=false) must be rejected: a tampered body, a wrong secret, a changed timestamp, a signature without the sha256= prefix."
+  ],
+  "webhook": {
+    "algorithm": "sha256=hex(HMAC-SHA256(secret, timestamp + \".\" + body))",
+    "vectors": [
+      {
+        "name": "invoice.paid (webhooks §3 vector)",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1700000000,
+        "body": "{\"event_id\":\"6f1c2c1e-3b2a-4d5e-8f90-1234567890ab\",\"type\":\"invoice.paid\",\"created_at\":\"2023-11-14T22:13:20Z\",\"data\":{\"invoice\":{\"id\":\"0e8c9a4b-1111-4222-8333-444455556666\",\"status\":\"paid\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "6f1c2c1e-3b2a-4d5e-8f90-1234567890ab",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+          "X-Timestamp": "1700000000"
+        },
+        "signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+        "valid": true,
+        "note": "the vector printed in https://cryptolike.net/docs/webhooks"
+      },
+      {
+        "name": "canonical JSON: keys in a different order, amounts as strings",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1758000000,
+        "body": "{\"created_at\":\"2026-09-16T08:00:00Z\",\"data\":{\"details\":{\"amount\":\"0.01000000\",\"chain_transaction_id\":\"7c2e1d3a-5b6f-4a7c-9d8e-0f1a2b3c4d5e\"},\"invoice\":{\"amount\":\"10.50\",\"currency\":\"USD\",\"id\":\"4e2bc88c-cb79-4afc-b864-c1ba8e9d50c9\",\"order_id\":\"A-1001\",\"paid_amount\":\"0.01000000\",\"status\":\"paid\"}},\"event_id\":\"1b8a0f2e-1d6c-4c0a-9d7b-2f9c3e4d5a6b\",\"type\":\"invoice.paid\"}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "1b8a0f2e-1d6c-4c0a-9d7b-2f9c3e4d5a6b",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "sha256=53b51d6272a704e81c2bc80ffe48871bd52c3ac709180bc60875bac0e93962de",
+          "X-Timestamp": "1758000000"
+        },
+        "signature": "sha256=53b51d6272a704e81c2bc80ffe48871bd52c3ac709180bc60875bac0e93962de",
+        "valid": true,
+        "note": "the body is signed as stored — do not re-serialise or re-order keys"
+      },
+      {
+        "name": "unicode and escapes in the body",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1758000001,
+        "body": "{\"event_id\":\"2c9b1a3f-2e7d-4d1b-8e8c-3a0d4f5e6b7c\",\"type\":\"deposit.confirmed\",\"created_at\":\"2026-09-16T08:00:01Z\",\"data\":{\"address\":{\"id\":\"5d0c2b4a-3f8e-4e2c-9f9d-4b1e5a6f7c8d\",\"label\":\"Заказ №7 — café \\\"Zoë\\\" \\\\ backslash\"},\"deposit\":{\"amount\":\"12.5\",\"net_amount\":\"12.375\",\"status\":\"confirmed\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "2c9b1a3f-2e7d-4d1b-8e8c-3a0d4f5e6b7c",
+          "X-Event-Type": "deposit.confirmed",
+          "X-Signature": "sha256=c76390c1f2f58f0571c473580f2a0d11d40f4fece3a90382fe0e4a59c68bb6be",
+          "X-Timestamp": "1758000001"
+        },
+        "signature": "sha256=c76390c1f2f58f0571c473580f2a0d11d40f4fece3a90382fe0e4a59c68bb6be",
+        "valid": true,
+        "note": "UTF-8 bytes of the decoded string; JSON escapes are part of the body"
+      },
+      {
+        "name": "ping test event with a merchant-chosen secret",
+        "secret": "my-very-own secret+with/special=chars_2026!",
+        "timestamp": 1758000002,
+        "body": "{\"event_id\":\"3d0c2b4a-3f8e-4e2c-9f9d-4b1e5a6f7c8d\",\"type\":\"ping\",\"created_at\":\"2026-09-16T08:00:02Z\",\"data\":{\"endpoint_id\":\"6e1d3c5b-4a9f-4f3d-8a0e-5c2f6b7a8d9e\",\"message\":\"test\"}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "3d0c2b4a-3f8e-4e2c-9f9d-4b1e5a6f7c8d",
+          "X-Event-Type": "ping",
+          "X-Signature": "sha256=898a5d1fc9438e0eb09066af70c264c4ed9791c74f8e25dd4f6d2dcff3336bdf",
+          "X-Timestamp": "1758000002"
+        },
+        "signature": "sha256=898a5d1fc9438e0eb09066af70c264c4ed9791c74f8e25dd4f6d2dcff3336bdf",
+        "valid": true,
+        "note": "secrets may contain spaces and punctuation — use the bytes as given"
+      },
+      {
+        "name": "withdrawal.completed, far-future timestamp",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 4102444800,
+        "body": "{\"event_id\":\"4e1d3c5b-4a9f-4f3d-8a0e-5c2f6b7a8d9e\",\"type\":\"withdrawal.completed\",\"created_at\":\"2100-01-01T00:00:00Z\",\"data\":{\"withdrawal\":{\"id\":\"7f2e4d6c-5b0a-4a4e-9b1f-6d3a7c8b9e0f\",\"status\":\"completed\",\"amount\":\"0.5\",\"txid\":\"9da31ebb1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "4e1d3c5b-4a9f-4f3d-8a0e-5c2f6b7a8d9e",
+          "X-Event-Type": "withdrawal.completed",
+          "X-Signature": "sha256=bcc7d913fe5b0505ce2b677435bc676af85059d9e2acf75c920fd8f1ac89e562",
+          "X-Timestamp": "4102444800"
+        },
+        "signature": "sha256=bcc7d913fe5b0505ce2b677435bc676af85059d9e2acf75c920fd8f1ac89e562",
+        "valid": true,
+        "note": "the timestamp is decimal seconds, no leading zeros, no milliseconds"
+      },
+      {
+        "name": "tampered body",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1700000000,
+        "body": "{\"event_id\":\"6f1c2c1e-3b2a-4d5e-8f90-1234567890ab\",\"type\":\"invoice.paid\",\"created_at\":\"2023-11-14T22:13:20Z\",\"data\":{\"invoice\":{\"id\":\"0e8c9a4b-1111-4222-8333-444455556666\",\"status\":\"expired\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "6f1c2c1e-3b2a-4d5e-8f90-1234567890ab",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+          "X-Timestamp": "1700000000"
+        },
+        "signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+        "valid": false,
+        "note": "one byte of the body changed — the signature no longer matches"
+      },
+      {
+        "name": "wrong secret",
+        "secret": "whsec_0000000000000000000000000000dead",
+        "timestamp": 1700000000,
+        "body": "{\"event_id\":\"6f1c2c1e-3b2a-4d5e-8f90-1234567890ab\",\"type\":\"invoice.paid\",\"created_at\":\"2023-11-14T22:13:20Z\",\"data\":{\"invoice\":{\"id\":\"0e8c9a4b-1111-4222-8333-444455556666\",\"status\":\"paid\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "6f1c2c1e-3b2a-4d5e-8f90-1234567890ab",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+          "X-Timestamp": "1700000000"
+        },
+        "signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+        "valid": false,
+        "note": "verified with another endpoint's secret"
+      },
+      {
+        "name": "timestamp changed",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1700000001,
+        "body": "{\"event_id\":\"6f1c2c1e-3b2a-4d5e-8f90-1234567890ab\",\"type\":\"invoice.paid\",\"created_at\":\"2023-11-14T22:13:20Z\",\"data\":{\"invoice\":{\"id\":\"0e8c9a4b-1111-4222-8333-444455556666\",\"status\":\"paid\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "6f1c2c1e-3b2a-4d5e-8f90-1234567890ab",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+          "X-Timestamp": "1700000001"
+        },
+        "signature": "sha256=788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+        "valid": false,
+        "note": "the timestamp is part of the signed string"
+      },
+      {
+        "name": "missing sha256= prefix",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1700000000,
+        "body": "{\"event_id\":\"6f1c2c1e-3b2a-4d5e-8f90-1234567890ab\",\"type\":\"invoice.paid\",\"created_at\":\"2023-11-14T22:13:20Z\",\"data\":{\"invoice\":{\"id\":\"0e8c9a4b-1111-4222-8333-444455556666\",\"status\":\"paid\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "6f1c2c1e-3b2a-4d5e-8f90-1234567890ab",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+          "X-Timestamp": "1700000000"
+        },
+        "signature": "788e60a2141669b4c7616c1c616fefb8ec38df0948fba19c6f4e48c616e46c21",
+        "valid": false,
+        "note": "the scheme tag is part of the header value"
+      },
+      {
+        "name": "upper-case hex",
+        "secret": "whsec_9f2c1e4b7a6d5c3b2a1f0e9d8c7b6a5f",
+        "timestamp": 1700000000,
+        "body": "{\"event_id\":\"6f1c2c1e-3b2a-4d5e-8f90-1234567890ab\",\"type\":\"invoice.paid\",\"created_at\":\"2023-11-14T22:13:20Z\",\"data\":{\"invoice\":{\"id\":\"0e8c9a4b-1111-4222-8333-444455556666\",\"status\":\"paid\"}}}",
+        "headers": {
+          "Content-Type": "application/json",
+          "User-Agent": "CryptoLike-Webhooks/1.0",
+          "X-Event-Id": "6f1c2c1e-3b2a-4d5e-8f90-1234567890ab",
+          "X-Event-Type": "invoice.paid",
+          "X-Signature": "sha256=788E60A2141669B4C7616C1C616FEFB8EC38DF0948FBA19C6F4E48C616E46C21",
+          "X-Timestamp": "1700000000"
+        },
+        "signature": "sha256=788E60A2141669B4C7616C1C616FEFB8EC38DF0948FBA19C6F4E48C616E46C21",
+        "valid": false,
+        "note": "compare the lower-case hex the platform sends (a byte comparison must not accept it as-is)"
+      }
+    ]
+  },
+  "api_request": {
+    "algorithm": "hex(HMAC-SHA256(secret, timestamp + \"\\n\" + METHOD + \"\\n\" + path_query + \"\\n\" + hex(sha256(body))))",
+    "vectors": [
+      {
+        "name": "POST /v1/invoices (authentication §3 vector)",
+        "secret": "kZ1Yv7pQ2xL9mN4tR8wE3uH6jB5cF0aD1gS2hK7lP9o",
+        "timestamp": 1758000000,
+        "method": "POST",
+        "path_query": "/v1/invoices",
+        "body": "{\"amount\":\"10.50\",\"currency\":\"USD\",\"order_id\":\"A-1001\"}",
+        "body_sha256": "50bf8f3c2622754522fb1343f2597a4843d08e4649255eefbdce1f800d3b457f",
+        "canonical_string": "1758000000\nPOST\n/v1/invoices\n50bf8f3c2622754522fb1343f2597a4843d08e4649255eefbdce1f800d3b457f",
+        "signature": "7878d965e6eb95b80df12e34e9466d40a8e12aa612653f72760f5dc5c06323a1",
+        "note": "the vector printed in https://cryptolike.net/docs/auth"
+      },
+      {
+        "name": "GET with query string, empty body",
+        "secret": "kZ1Yv7pQ2xL9mN4tR8wE3uH6jB5cF0aD1gS2hK7lP9o",
+        "timestamp": 1758000000,
+        "method": "GET",
+        "path_query": "/v1/balances?limit=10",
+        "body": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "canonical_string": "1758000000\nGET\n/v1/balances?limit=10\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "signature": "34b530cc1f7d5760f991e23d1f8c499bb166356d7da7c17f7984016199be9310",
+        "note": "sign the query exactly as sent; empty body hash e3b0c442…"
+      },
+      {
+        "name": "GET with encoded query",
+        "secret": "kZ1Yv7pQ2xL9mN4tR8wE3uH6jB5cF0aD1gS2hK7lP9o",
+        "timestamp": 1758000010,
+        "method": "GET",
+        "path_query": "/v1/invoices?status=paid&created_from=2026-09-01T00%3A00%3A00Z&limit=50",
+        "body": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "canonical_string": "1758000010\nGET\n/v1/invoices?status=paid&created_from=2026-09-01T00%3A00%3A00Z&limit=50\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "signature": "9ad0161c890f47740e027d9b5aa650eab0359ae39f80bb48a33bb0a122bec3d1",
+        "note": "percent-encoding is part of the signed target"
+      },
+      {
+        "name": "PUT /v1/embed",
+        "secret": "kZ1Yv7pQ2xL9mN4tR8wE3uH6jB5cF0aD1gS2hK7lP9o",
+        "timestamp": 1758000020,
+        "method": "PUT",
+        "path_query": "/v1/embed",
+        "body": "{\"allowed_origins\":[\"https://shop.example\",\"http://localhost:3000\"]}",
+        "body_sha256": "86a240b654076078b6c151e07cfc263a2a18784b6d3e1337e112cce971f71d28",
+        "canonical_string": "1758000020\nPUT\n/v1/embed\n86a240b654076078b6c151e07cfc263a2a18784b6d3e1337e112cce971f71d28",
+        "signature": "7d76f0f71508b7afd53aa503dcb05303018aacb9dd22ca48f2c4924ae6861981",
+        "note": "widget allowlist (https://cryptolike.net/docs/widget §2)"
+      },
+      {
+        "name": "POST with unicode body",
+        "secret": "kZ1Yv7pQ2xL9mN4tR8wE3uH6jB5cF0aD1gS2hK7lP9o",
+        "timestamp": 1758000030,
+        "method": "POST",
+        "path_query": "/v1/invoices",
+        "body": "{\"amount\":\"100\",\"currency\":\"EUR\",\"description\":\"Заказ №7 — café\"}",
+        "body_sha256": "ef0dcdf8250f87352a9a232b4a2a62f60cb20a857aede4cc3db3dd671224984f",
+        "canonical_string": "1758000030\nPOST\n/v1/invoices\nef0dcdf8250f87352a9a232b4a2a62f60cb20a857aede4cc3db3dd671224984f",
+        "signature": "f183ba5299c2d2d370b48f136743c8c4091aa378a2111bcd1802076399bd7a27",
+        "note": "hash the UTF-8 bytes"
+      },
+      {
+        "name": "DELETE without body",
+        "secret": "kZ1Yv7pQ2xL9mN4tR8wE3uH6jB5cF0aD1gS2hK7lP9o",
+        "timestamp": 1758000040,
+        "method": "DELETE",
+        "path_query": "/v1/webhooks/endpoints/6e1d3c5b-4a9f-4f3d-8a0e-5c2f6b7a8d9e",
+        "body": "",
+        "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "canonical_string": "1758000040\nDELETE\n/v1/webhooks/endpoints/6e1d3c5b-4a9f-4f3d-8a0e-5c2f6b7a8d9e\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "signature": "0c9545dce67be2e973600b75396ecfbe5f81b5c5a2fdc300d1a6bbe71f288285",
+        "note": "METHOD upper-case"
+      }
+    ]
+  }
+}
