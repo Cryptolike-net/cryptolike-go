@@ -15,6 +15,6 @@ package cryptolike
 
 // Version of the SDK; UserAgent is sent with every request.
 const (
-	Version   = "0.1.0"
+	Version   = "0.2.0"
 	UserAgent = "cryptolike-sdk-go/" + Version
 )

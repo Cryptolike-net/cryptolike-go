@@ -61,7 +61,7 @@ Full examples: [`examples/create-payment`](examples/create-payment/main.go), [`e
 
 | Resource | Methods |
 |---|---|
-| `api.Invoices` | `Create(ctx, req, idempotencyKey)`, `Get`, `List(ctx, q)`, `Each(ctx, q, fn)`, `Cancel`, `ExportCSV` |
+| `api.Invoices` | `Create(ctx, req, idempotencyKey)`, `Get`, `List(ctx, q)`, `Each(ctx, q, fn)`, `Cancel`, `ExportCSV`, `CoinOptions(ctx, id)`, `SelectCoin(ctx, id, coinID, idempotencyKey)` |
 | `api.Addresses` | `Create`, `Get(ctx, id, q)`, `List`, `Each`, `Archive(ctx, id, idempotencyKey)`, `Restore(ctx, id, idempotencyKey)` |
 | `api` (archive) | `ArchiveStaticAddress`, `RestoreStaticAddress`, `ListArchivedStaticAddresses(ctx, q)`, `EachArchivedStaticAddress(ctx, q, fn)` |
 | `api.Transactions` | `List`, `Each`, `Get`, `ExportCSV` |
@@ -115,6 +115,58 @@ that match `Currency`, drops the rest; none left → `*APIError` 422 `no_allowed
 (`Field() == "allowed_coin_ids"`). Not combinable with `CoinID` (400). An empty non-nil slice is
 refused before the request (`ErrEmptyAllowedCoins`) — a filter that found nothing never turns
 into "every coin".
+
+## Your own payment page (host-to-host)
+
+Instead of sending the payer to `CheckoutURL` you can show the payment inside your own checkout
+([Host-to-host guide](https://cryptolike.net/docs/h2h)). Every call below runs **on your server**;
+your page receives only what it renders.
+
+```go
+// 1. An invoice without CoinID — the payer picks the coin on your page.
+inv, err := api.Invoices.Create(ctx, cryptolike.CreateInvoiceRequest{Amount: "49.90", Currency: "USD", OrderID: "A-1001"}, "order-A-1001")
+
+// 2. The coins to offer, each with an informative ≈ amount (nil + EstimateReason when it cannot be priced now).
+options, err := api.Invoices.CoinOptions(ctx, inv.ID)
+for _, o := range options {
+    offer(o.CoinID, o.Ticker+" · "+o.NetworkName, o.EstimatedAmount)
+}
+
+// 3. The payer's choice fixes the coin, the address and — for a fiat amount — the rate.
+//    One key per (invoice, coin): a retry replays the first answer instead of choosing twice.
+pay, err := api.Invoices.SelectCoin(ctx, inv.ID, chosenCoinID, "select-"+inv.ID+"-"+chosenCoinID)
+
+// 4. The payment block of your page (the fields are non-nil once the coin is chosen).
+show(PaymentBlock{
+    Network:    *pay.Network,                        // name the network next to the address — a transfer on another network is lost
+    Address:    *pay.Address,                        // with a copy button
+    Amount:     *pay.PayerAmount + " " + *pay.Ticker, // exactly this amount (a decimal string), with a copy button
+    QR:         *pay.QRPayload,                      // the bare address on every network (exchanges refuse a URI) — keep the amount next to it
+    WalletLink: *pay.PaymentURI,                     // "Open in wallet"
+    ExpiresAt:  pay.TTLExpiresAt,                    // countdown
+})
+
+// 5. Progress for the page: poll from your server (the browser never talks to the API).
+now, err := api.Invoices.Get(ctx, inv.ID)
+progress(now.Status, now.Confirmations, now.RequiredConfirmations, now.RemainingAmount, now.PaymentURI)
+```
+
+- **Fulfil the order on the `invoice.paid` webhook only** (verified as below), never on what the
+  page shows. `underpaid` — the payer may top up to the same address until `TTLExpiresAt`: show
+  `RemainingAmount`, `PaymentURI` already asks for the remainder. `OverpaidAmount` above zero —
+  credited, settle the difference with the customer. `LatePayment` — a transfer after the invoice
+  closed was credited; decide whether to fulfil or refund.
+- `QRPayload` is the bare address on every network (never a scheme or an amount): many payers send from
+  an exchange, and its withdrawal form accepts an address only. To offer a "QR with amount" for
+  wallets (BIP-21, Bitcoin/Litecoin), encode `PaymentURI` on the payer's choice.
+- `PaymentURI`, `QRPayload`, `Confirmations` and `RequiredConfirmations` are nil until the coin is
+  chosen; `Confirmations` stays nil while nothing was seen on the chain. Webhook payloads do not
+  carry them — read the invoice.
+- `SelectCoin` refusals: `409 conflict` — the coin is already chosen (also with the same coin) or
+  the invoice is no longer `new`: read the invoice; `400` with `Field() == "coin_id"` — the coin is
+  not among `CoinOptions`; `503` — the rate or an address is not available right now: the SDK
+  retries it with the same key. `CoinOptions` on an invoice with a coin is `409`
+  (`Details["coin_id"]`).
 
 ## Errors
 

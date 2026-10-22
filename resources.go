@@ -82,6 +82,31 @@ func (r *Invoices) Cancel(ctx context.Context, id, idempotencyKey string) (*Invo
 	return do[Invoice](r.c, ctx, http.MethodPost, pathID("/v1/invoices", id)+"/cancel", nil, nil, idempotencyKey)
 }
 
+// CoinOptions returns the coins the payer may choose for an invoice created without a coin — the
+// list of the payment page, each with an informative ≈ EstimatedAmount. Show it in your own UI
+// and fix the choice with SelectCoin. 409 conflict (details coin_id) once the coin is chosen.
+// Permission read.
+func (r *Invoices) CoinOptions(ctx context.Context, id string) ([]CoinOption, error) {
+	var out struct {
+		CoinOptions []CoinOption `json:"coin_options"`
+	}
+	return out.CoinOptions, r.c.Request(ctx, http.MethodGet, pathID("/v1/invoices", id)+"/coin-options", nil, nil, "", &out)
+}
+
+// SelectCoin fixes the coin of an invoice created without a coin — the same choice as the
+// payer's on the payment page: allocates the address, prices a fiat amount now and locks the
+// rate. It returns the invoice with Address, PayerAmount, PaymentURI, QRPayload and
+// RequiredConfirmations. Only once and only while the invoice is new (otherwise 409, also with
+// the same coin); a coin outside CoinOptions is 400 (field coin_id); 503 (rate or address not
+// available right now) is retried with the same idempotencyKey ("" generates a UUID).
+// Permission create_invoice.
+func (r *Invoices) SelectCoin(ctx context.Context, id, coinID, idempotencyKey string) (*Invoice, error) {
+	body := struct {
+		CoinID string `json:"coin_id"`
+	}{coinID}
+	return do[Invoice](r.c, ctx, http.MethodPost, pathID("/v1/invoices", id)+"/coin", nil, body, idempotencyKey)
+}
+
 // ExportCSV returns the whole filtered list as CSV text.
 func (r *Invoices) ExportCSV(ctx context.Context, q ListQuery) (string, error) {
 	var out string

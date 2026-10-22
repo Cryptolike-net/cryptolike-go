@@ -103,12 +103,53 @@ type Invoice struct {
 	ExpiredAt       *time.Time        `json:"expired_at"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
-	Events          []InvoiceEvent    `json:"events,omitempty"`
+	// PaymentURI is the wallet link for the payer (BIP-21 / EIP-681 / tron:) asking for what is
+	// still owed; nil until the coin is chosen.
+	PaymentURI *string `json:"payment_uri"`
+	// QRPayload is what to encode in the payment QR code — the bare deposit address on every network
+	// (no URI scheme, no amount: exchange withdrawal forms accept an address only); show the amount
+	// next to it. For an opt-in "QR with amount" for wallets (Bitcoin/Litecoin) encode PaymentURI.
+	// Nil until the coin is chosen.
+	QRPayload *string `json:"qr_payload"`
+	// Confirmations of the least-confirmed transfer on the chain now; nil until the coin is
+	// chosen or while nothing was seen.
+	Confirmations *int `json:"confirmations"`
+	// RequiredConfirmations the coin needs before a transfer is credited; nil until the coin is chosen.
+	RequiredConfirmations *int           `json:"required_confirmations"`
+	Events                []InvoiceEvent `json:"events,omitempty"`
 }
 
 // IsFinal reports whether the status will not change any more (paid, expired, cancelled).
 func (i *Invoice) IsFinal() bool {
 	return i.Status == "paid" || i.Status == "expired" || i.Status == "cancelled"
+}
+
+// CoinOption is one coin the payer may choose for an invoice without a coin (Invoices.CoinOptions).
+type CoinOption struct {
+	CoinID        string `json:"coin_id"`
+	Ticker        string `json:"ticker"`
+	Name          string `json:"name"`
+	Network       string `json:"network"`
+	NetworkName   string `json:"network_name"`
+	Decimals      int    `json:"decimals"`
+	Confirmations int    `json:"confirmations"`
+	// EstimatedAmount is the informative ≈ amount in the coin if chosen now; the choice prices
+	// again and locks its rate. nil when it cannot be priced now (EstimateReason) — the coin can
+	// still be chosen.
+	EstimatedAmount *string `json:"estimated_amount"`
+	// EstimateReason: rate_stale | rate_unavailable | below_min | above_max | converts_to_zero | too_many_decimals.
+	EstimateReason *string `json:"estimate_reason"`
+	// EstimateMessage is the UI text for a missing estimate; nil with an estimate.
+	EstimateMessage *CheckoutText `json:"estimate_message"`
+	// RateAsOf is when the rate behind EstimatedAmount was quoted (fiat amounts only).
+	RateAsOf *time.Time `json:"rate_as_of"`
+}
+
+// CheckoutText is a UI text: a stable Key with its English Default and the Params to fill in.
+type CheckoutText struct {
+	Key     string            `json:"key"`
+	Default string            `json:"default"`
+	Params  map[string]string `json:"params,omitempty"`
 }
 
 // InvoiceEvent is one transition of the status timeline.

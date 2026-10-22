@@ -2,6 +2,7 @@ package cryptolike
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -197,6 +198,8 @@ func TestEveryResourceHitsTheDocumentedRoute(t *testing.T) {
 		{func() error { _, e := c.Webhooks.Deliveries.Retry(ctx, "d1", ""); return e }, "POST", "/v1/webhooks/deliveries/d1/retry"},
 		{func() error { _, e := c.Embed.Get(ctx); return e }, "GET", "/v1/embed"},
 		{func() error { _, e := c.Embed.Set(ctx, []string{"https://shop.example"}); return e }, "PUT", "/v1/embed"},
+		{func() error { _, e := c.Invoices.CoinOptions(ctx, "i1"); return e }, "GET", "/v1/invoices/i1/coin-options"},
+		{func() error { _, e := c.Invoices.SelectCoin(ctx, "i1", "c", ""); return e }, "POST", "/v1/invoices/i1/coin"},
 	}
 	for i, call := range calls {
 		if err := call.fn(); err != nil {
@@ -548,5 +551,120 @@ func TestCreateInvoiceAllowedCoinIDs(t *testing.T) {
 	}
 	if *list[0].InvoiceEnabled != true || *list[1].InvoiceEnabled != false || list[2].InvoiceEnabled != nil {
 		t.Errorf("invoice_enabled = %+v", list)
+	}
+}
+
+// Your own payment page (host-to-host): the coin options of an invoice without a coin, the choice, the payment block.
+const (
+	h2hInvoiceID = "0b6c8f2e-3a1d-4e5f-9a7b-1c2d3e4f5a6b"
+	h2hInvoice   = `{"id":"0b6c8f2e-3a1d-4e5f-9a7b-1c2d3e4f5a6b","status":"new","currency":"USD","amount":"49.90","coin_id":"c-btc","ticker":"BTC","network":"bitcoin",` +
+		`"address":"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4","payer_amount":"0.00081234","amount_crypto":"0.00080584","ttl_expires_at":"2026-10-18T12:30:00Z",` +
+		`"payment_uri":"bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=0.00081234",` +
+		`"qr_payload":"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4","confirmations":null,"required_confirmations":2,"created_at":"2026-10-18T12:00:00Z"}`
+	h2hOptions = `{"coin_options":[` +
+		`{"coin_id":"c-usdt","ticker":"USDT","name":"Tether USD","network":"tron","network_name":"TRON (TRC-20)","decimals":6,"confirmations":19,` +
+		`"estimated_amount":"49.900000","estimate_reason":null,"estimate_message":null,"rate_as_of":"2026-10-18T12:00:00Z"},` +
+		`{"coin_id":"c-btc","ticker":"BTC","name":"Bitcoin","network":"bitcoin","network_name":"Bitcoin","decimals":8,"confirmations":2,` +
+		`"estimated_amount":null,"estimate_reason":"rate_stale","estimate_message":{"key":"checkout.estimate.rate_stale","default":"Estimate unavailable"},"rate_as_of":null}]}`
+)
+
+func TestInvoiceCoinOptionsAndSelectCoin(t *testing.T) {
+	s, c := newStand(t, jsonAnswer(200, h2hOptions), jsonAnswer(200, h2hInvoice), jsonAnswer(200, h2hInvoice))
+	ctx := context.Background()
+
+	opts, err := c.Invoices.CoinOptions(ctx, h2hInvoiceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(opts) != 2 || opts[0].CoinID != "c-usdt" || opts[0].EstimatedAmount == nil || *opts[0].EstimatedAmount != "49.900000" ||
+		opts[0].EstimateReason != nil || opts[0].EstimateMessage != nil || opts[0].NetworkName != "TRON (TRC-20)" || opts[0].Confirmations != 19 ||
+		opts[0].RateAsOf == nil || !opts[0].RateAsOf.Equal(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)) {
+		t.Errorf("option 0 = %+v", opts[0])
+	}
+	if opts[1].EstimatedAmount != nil || opts[1].EstimateReason == nil || *opts[1].EstimateReason != "rate_stale" ||
+		opts[1].EstimateMessage == nil || opts[1].EstimateMessage.Key != "checkout.estimate.rate_stale" || opts[1].RateAsOf != nil {
+		t.Errorf("option 1 = %+v", opts[1])
+	}
+	r := s.api.seen[0]
+	if r.Method != "GET" || r.Target != "/v1/invoices/"+h2hInvoiceID+"/coin-options" || r.Body != "" || r.Header.Get("Idempotency-Key") != "" {
+		t.Errorf("coin-options request = %s %s %q key=%q", r.Method, r.Target, r.Body, r.Header.Get("Idempotency-Key"))
+	}
+
+	key := "select-" + h2hInvoiceID + "-c-btc"
+	inv, err := c.Invoices.SelectCoin(ctx, h2hInvoiceID, "c-btc", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = s.api.seen[1]
+	path := "/v1/invoices/" + h2hInvoiceID + "/coin"
+	if r.Method != "POST" || r.Target != path || r.Body != `{"coin_id":"c-btc"}` || r.Header.Get("Idempotency-Key") != key {
+		t.Errorf("select request = %s %s %q key=%q", r.Method, r.Target, r.Body, r.Header.Get("Idempotency-Key"))
+	}
+	if r.Header.Get("X-Signature") != Sign(testSecret, r.Header.Get("X-Timestamp"), "POST", path, []byte(r.Body)) {
+		t.Error("select signature does not cover the request as sent")
+	}
+	if inv.PaymentURI == nil || *inv.PaymentURI != "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=0.00081234" ||
+		inv.QRPayload == nil || *inv.QRPayload != "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" || inv.Confirmations != nil ||
+		inv.RequiredConfirmations == nil || *inv.RequiredConfirmations != 2 || inv.PayerAmount == nil || *inv.PayerAmount != "0.00081234" {
+		t.Errorf("invoice = %+v", inv)
+	}
+
+	if _, err := c.Invoices.SelectCoin(ctx, h2hInvoiceID, "c-btc", ""); err != nil {
+		t.Fatal(err)
+	}
+	if k := s.api.seen[2].Header.Get("Idempotency-Key"); len(k) != 36 {
+		t.Errorf("auto Idempotency-Key = %q", k)
+	}
+	if len(s.sleeps) != 0 {
+		t.Errorf("sleeps = %v", s.sleeps)
+	}
+}
+
+func TestInvoicePaymentFieldsBeforeTheChoice(t *testing.T) {
+	var inv Invoice
+	if err := json.Unmarshal([]byte(`{"id":"i1","status":"new","coin_id":null,"payment_uri":null,"qr_payload":null,"confirmations":null,"required_confirmations":null}`), &inv); err != nil {
+		t.Fatal(err)
+	}
+	if inv.PaymentURI != nil || inv.QRPayload != nil || inv.Confirmations != nil || inv.RequiredConfirmations != nil {
+		t.Errorf("before the choice = %+v", inv)
+	}
+	if err := json.Unmarshal([]byte(`{"id":"i1","status":"pending","confirmations":3,"required_confirmations":20}`), &inv); err != nil {
+		t.Fatal(err)
+	}
+	if inv.Confirmations == nil || *inv.Confirmations != 3 || *inv.RequiredConfirmations != 20 {
+		t.Errorf("seen = %+v", inv)
+	}
+}
+
+func TestSelectCoin503RetriedSameKey409And400NotRetried(t *testing.T) {
+	s, c := newStand(t,
+		jsonAnswer(503, `{"error":{"code":"unavailable","message":"rate feed is down"}}`),
+		jsonAnswer(200, h2hInvoice),
+		jsonAnswer(409, `{"error":{"code":"conflict","message":"coin already chosen","details":{"coin_id":"c-btc"}}}`),
+		jsonAnswer(400, `{"error":{"code":"validation_error","message":"coin is not among the options","details":{"field":"coin_id"}}}`),
+	)
+	ctx := context.Background()
+	inv, err := c.Invoices.SelectCoin(ctx, "i1", "c-btc", "k-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Address == nil || *inv.Address != "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" || len(s.api.seen) != 2 || len(s.sleeps) != 1 {
+		t.Fatalf("invoice = %+v, requests %d, sleeps %v", inv, len(s.api.seen), s.sleeps)
+	}
+	for i, r := range s.api.seen {
+		if r.Header.Get("Idempotency-Key") != "k-1" || r.Body != `{"coin_id":"c-btc"}` {
+			t.Errorf("attempt %d: key=%q body=%q", i, r.Header.Get("Idempotency-Key"), r.Body)
+		}
+	}
+
+	var apiErr *APIError
+	if _, err := c.Invoices.CoinOptions(ctx, "i1"); !errors.As(err, &apiErr) || apiErr.Status != 409 || apiErr.Details["coin_id"] != "c-btc" {
+		t.Fatalf("coin-options on a chosen invoice: err = %v", err)
+	}
+	if _, err := c.Invoices.SelectCoin(ctx, "i1", "c-x", ""); !errors.As(err, &apiErr) || apiErr.Status != 400 || apiErr.Field() != "coin_id" {
+		t.Fatalf("coin outside the options: err = %v", err)
+	}
+	if len(s.api.seen) != 4 || len(s.sleeps) != 1 {
+		t.Error("4xx must not be retried")
 	}
 }
